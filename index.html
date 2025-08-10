@@ -490,13 +490,34 @@
 
             const date = new Date();
             const dateString = `${date.getDate().toString().padStart(2, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getFullYear()}`;
-            const investorInfoString = [
-                `${headerInfoData['Investor Name'] || ''}`,
-                `Mutual Fund Report as on : ${dateString}`
-            ].join('\n');
+            const investorName = headerInfoData['Investor Name'] || '';
+            const reportDateString = `Mutual Fund Report as on : ${dateString}`;
             
+            const startX = 15;
+            const startY = 15;
+            const lineHeight = 5;
+            const padding = 2;
+
+            // Calculate width of the text block for highlighting
+            const investorNameWidth = doc.getStringUnitWidth(investorName) * 12 / doc.internal.scaleFactor;
+            const dateStringWidth = doc.getStringUnitWidth(reportDateString) * 10 / doc.internal.scaleFactor;
+            const highlightWidth = Math.max(investorNameWidth, dateStringWidth) + (padding * 2);
+            const highlightHeight = (lineHeight * 2) + (padding * 2);
+
+            // Draw highlight rectangle
+            doc.setFillColor(230, 247, 255); // A light blue highlight color
+            doc.rect(startX - padding, startY - lineHeight, highlightWidth, highlightHeight, 'F');
+
+            // Set font for Investor Name (Bold)
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.text(investorName, startX, startY);
+
+            // Set font for Date (Normal)
+            doc.setFont('helvetica', 'normal');
             doc.setFontSize(10);
-            doc.text(investorInfoString, 15, 15);
+            doc.text(reportDateString, startX, startY + lineHeight);
+
 
             const headers = selectedColumns.map(item => item.dataset.displayName);
             const body = fullTableData.map(row => {
@@ -525,7 +546,7 @@
             if (currentValueIndex !== -1) totalRow[currentValueIndex] = formatIndianCurrency(totalCurrent);
             
             doc.autoTable({
-                startY: 30,
+                startY: startY + lineHeight + (padding * 2),
                 head: [headers],
                 body: body,
                 foot: [totalRow],
