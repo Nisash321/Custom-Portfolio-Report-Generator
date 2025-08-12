@@ -326,8 +326,10 @@
             let currentCategory = 'N/A';
             const rawData = Papa.parse(cleanCsvBlock, { header: false, skipEmptyLines: true }).data;
 
-            rawData.forEach(row => {
+            for (let i = 0; i < rawData.length; i++) {
+                const row = rawData[i];
                 const nonEmptyFields = row.filter(field => field && field.trim() !== '');
+
                 if (nonEmptyFields.length === 1 && nonEmptyFields[0].includes('Fund')) {
                     currentCategory = nonEmptyFields[0].trim();
                 } else if (row.length > 10 && !isNaN(parseFloat(row[0]))) {
@@ -349,13 +351,36 @@
                     rowData['P+L'] = row[12 + offset];
                     rowData['Abs%'] = row[13 + offset];
                     rowData['CAGR%'] = row[14 + offset];
+                    
+                    // Default investment type
+                    rowData['Investment type'] = 'Lumpsum';
+
+                    // Check current row for type (handles "Maharaja System report" format)
                     const folioString = String(row[1]).toLowerCase();
-                    if (folioString.includes('sip')) rowData['Investment type'] = 'SIP';
-                    else if (folioString.includes('stp')) rowData['Investment type'] = 'STP';
-                    else rowData['Investment type'] = 'Lumpsum';
+                    if (folioString.includes('sip')) {
+                        rowData['Investment type'] = 'SIP';
+                    } else if (folioString.includes('stp')) {
+                        rowData['Investment type'] = 'STP';
+                    }
+
+                    // Check next row for type override (handles "Maharaja" format)
+                    const nextRow = rawData[i + 1];
+                    if (nextRow && nextRow.length > 1 && nextRow[1]) {
+                        const nextRowNonEmpty = nextRow.filter(field => field && field.trim() !== '');
+                        const nextRowTypeString = String(nextRow[1]).toLowerCase();
+                        // Check if the next row is a dedicated type row (e.g., ",(STP),,,")
+                        if (nextRowNonEmpty.length === 1 && (nextRowTypeString.includes('(sip)') || nextRowTypeString.includes('(stp)'))) {
+                            if (nextRowTypeString.includes('(sip)')) {
+                                rowData['Investment type'] = 'SIP';
+                            } else if (nextRowTypeString.includes('(stp)')) {
+                                rowData['Investment type'] = 'STP';
+                            }
+                        }
+                    }
+                    
                     localFullTableData.push(rowData);
                 }
-            });
+            }
             
             const localAllHeaders = [
                 'S.No', 'Fund Name', 'Fund category', 'Folio start/re-start date', 
