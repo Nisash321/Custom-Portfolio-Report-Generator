@@ -95,6 +95,10 @@
                             <input id="preset-maharaja" name="report-type" type="radio" checked class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
                             <label for="preset-maharaja" class="ml-2 block text-sm font-medium text-gray-900">Maharaja Report (Preset)</label>
                         </div>
+                        <div class="flex items-center">
+                            <input id="preset-maharaja-requested" name="report-type" type="radio" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                            <label for="preset-maharaja-requested" class="ml-2 block text-sm font-medium text-gray-900">Maharaja Requested Preset</label>
+                        </div>
                     </fieldset>
                 </div>
 
@@ -158,9 +162,10 @@
         const downloadPdfBtn = document.getElementById('download-pdf-btn');
         const manualSelectionRadio = document.getElementById('manual-selection');
         const presetMaharajaRadio = document.getElementById('preset-maharaja');
+        const presetMaharajaRequestedRadio = document.getElementById('preset-maharaja-requested');
         const dragDropSection = document.getElementById('drag-drop-section');
 
-        // --- PRESET DEFINITION ---
+        // --- PRESET DEFINITIONS ---
         const maharajaPreset = {
             'S.no': 'S.No',
             'Fund Name': 'Product Name',
@@ -172,6 +177,19 @@
             'Invested Date': 'Folio start/re-start date',
             'XIRR': 'CAGR%'
         };
+        
+        const maharajaRequestedPreset = {
+            'S.no': 'S.No',
+            'Liquid Fund': 'Liquid Fund', // Special column
+            'Equity Fund': 'Equity Fund', // Special column
+            'SIP / STP': 'Investment type',
+            'Folio': 'Fund Name',
+            'Invested Value': 'Purchase Cost Value',
+            'Current Value': 'Current Value',
+            'Invested Date': 'Folio start/re-start date',
+            'XIRR': 'CAGR%'
+        };
+
 
         // --- EVENT LISTENERS ---
         fileInput.addEventListener('change', handleFileSelect);
@@ -179,6 +197,7 @@
         downloadPdfBtn.addEventListener('click', downloadCombinedPDF);
         manualSelectionRadio.addEventListener('change', handleReportTypeChange);
         presetMaharajaRadio.addEventListener('change', handleReportTypeChange);
+        presetMaharajaRequestedRadio.addEventListener('change', handleReportTypeChange);
 
         /**
          * Formats a number using the Indian numbering system (lakhs, crores).
@@ -194,6 +213,19 @@
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             });
+        }
+        
+        /**
+         * Checks if a fund name corresponds to a liquid fund.
+         * @param {string} fundName - The name of the fund.
+         * @returns {boolean} True if it is a liquid fund.
+         */
+        function isLiquidFund(fundName) {
+            if (!fundName) return false;
+            const lowerCaseFundName = fundName.toLowerCase();
+            return lowerCaseFundName.includes('low duration') ||
+                   lowerCaseFundName.includes('ultra short') ||
+                   lowerCaseFundName.includes('arbitrage');
         }
 
         /**
@@ -393,9 +425,13 @@
         }
 
         function handleReportTypeChange() {
-            if (presetMaharajaRadio.checked) {
+            if (presetMaharajaRadio.checked || presetMaharajaRequestedRadio.checked) {
                 dragDropSection.classList.add('hidden');
-                applyMaharajaPreset();
+                if (presetMaharajaRadio.checked) {
+                    applyMaharajaPreset();
+                } else {
+                    applyMaharajaRequestedPreset();
+                }
             } else {
                 dragDropSection.classList.remove('hidden');
                 initializeDragDrop();
@@ -420,6 +456,16 @@
                     availableFieldsContainer.appendChild(fieldItem);
                 }
             });
+        }
+        
+        function applyMaharajaRequestedPreset() {
+            availableFieldsContainer.innerHTML = '';
+            columnFieldsContainer.innerHTML = '';
+            for (const displayName in maharajaRequestedPreset) {
+                const systemName = maharajaRequestedPreset[displayName];
+                const fieldItem = createFieldItem(displayName, systemName);
+                columnFieldsContainer.appendChild(fieldItem);
+            }
         }
 
         function populateHeaderInfo(data) {
@@ -465,14 +511,30 @@
             noDataMessage.classList.add('hidden');
             downloadBtn.disabled = false;
             downloadPdfBtn.disabled = false;
-
-            const previewData = processedFilesData[0].fullTableData.slice(0, 5);
-            const thead = `<thead class="bg-gray-50"><tr>${selectedColumns.map(item => `<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${item.dataset.displayName}</th>`).join('')}</tr></thead>`;
+            
+            const isRequestedPreset = presetMaharajaRequestedRadio.checked;
+            const fullData = processedFilesData[0].fullTableData;
+            const previewData = fullData.slice(0, 10);
+            const headers = selectedColumns.map(item => item.dataset.displayName);
+            const thead = `<thead class="bg-gray-50"><tr>${headers.map(h => `<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h}</th>`).join('')}</tr></thead>`;
             
             const tbody = `<tbody class="bg-white divide-y divide-gray-200">${previewData.map(row => {
                 const cells = selectedColumns.map(item => {
                     const headerName = item.dataset.displayName;
-                    let value = row[item.dataset.systemName] || '';
+                    let value = '';
+
+                    if (isRequestedPreset) {
+                        if (headerName === 'Liquid Fund') {
+                            value = isLiquidFund(row['Product Name']) ? row['Product Name'] : '';
+                        } else if (headerName === 'Equity Fund') {
+                            value = !isLiquidFund(row['Product Name']) ? row['Product Name'] : '';
+                        } else {
+                            value = row[item.dataset.systemName] || '';
+                        }
+                    } else {
+                        value = row[item.dataset.systemName] || '';
+                    }
+
                     if (headerName === 'Invested Value' || headerName === 'Current Value') {
                         value = formatIndianCurrency(value);
                     }
@@ -480,8 +542,30 @@
                 }).join('');
                 return `<tr>${cells}</tr>`;
             }).join('')}</tbody>`;
+            
+            let tfoot = '';
+            if(isRequestedPreset) {
+                let totalInvested = 0;
+                let totalCurrent = 0;
+                fullData.forEach(row => {
+                    totalInvested += parseFloat(String(row['Purchase Cost Value']).replace(/,/g, '')) || 0;
+                    totalCurrent += parseFloat(String(row['Current Value']).replace(/,/g, '')) || 0;
+                });
+                
+                const totalRow = new Array(headers.length).fill('');
+                const investedValueIndex = headers.indexOf('Invested Value');
+                const currentValueIndex = headers.indexOf('Current Value');
+                const folioIndex = headers.indexOf('Folio');
 
-            previewTable.innerHTML = thead + tbody;
+                if(folioIndex !== -1) totalRow[folioIndex] = 'Total';
+                if(investedValueIndex !== -1) totalRow[investedValueIndex] = formatIndianCurrency(totalInvested);
+                if(currentValueIndex !== -1) totalRow[currentValueIndex] = formatIndianCurrency(totalCurrent);
+
+                tfoot = `<tfoot class="bg-gray-100 font-bold"><tr>${totalRow.map(val => `<td class="px-6 py-3 text-sm text-gray-800">${val}</td>`).join('')}</tr></tfoot>`;
+            }
+
+
+            previewTable.innerHTML = thead + tbody + tfoot;
         }
         
         function getFilename() {
@@ -507,11 +591,42 @@
 
             doc.save(`${getFilename()}.pdf`);
         }
+        
+        function generateDataForExport(fullTableData) {
+            const selectedColumns = Array.from(columnFieldsContainer.children);
+            const headers = selectedColumns.map(item => item.dataset.displayName);
+            const isRequestedPreset = presetMaharajaRequestedRadio.checked;
+
+            const body = fullTableData.map(row => {
+                return selectedColumns.map(item => {
+                    const headerName = item.dataset.displayName;
+                    let value = '';
+
+                    if (isRequestedPreset) {
+                        if (headerName === 'Liquid Fund') {
+                            value = isLiquidFund(row['Product Name']) ? row['Product Name'] : '';
+                        } else if (headerName === 'Equity Fund') {
+                            value = !isLiquidFund(row['Product Name']) ? row['Product Name'] : '';
+                        } else {
+                             value = row[item.dataset.systemName] || '';
+                        }
+                    } else {
+                        value = row[item.dataset.systemName] || '';
+                    }
+                    
+                    if (headerName === 'Invested Value' || headerName === 'Current Value') {
+                       return formatIndianCurrency(value);
+                    }
+                    return value;
+                });
+            });
+            return { headers, body };
+        }
+
 
         function generatePDFPage(doc, fileData) {
             const { headerInfoData, fullTableData } = fileData;
-            const selectedColumns = Array.from(columnFieldsContainer.children);
-            if (selectedColumns.length === 0) return;
+            if (fullTableData.length === 0) return;
 
             const date = new Date();
             const dateString = `${date.getDate().toString().padStart(2, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getFullYear()}`;
@@ -523,38 +638,23 @@
             const lineHeight = 5;
             const padding = 2;
 
-            // Calculate width of the text block for highlighting
             const investorNameWidth = doc.getStringUnitWidth(investorName) * 12 / doc.internal.scaleFactor;
             const dateStringWidth = doc.getStringUnitWidth(reportDateString) * 10 / doc.internal.scaleFactor;
             const highlightWidth = Math.max(investorNameWidth, dateStringWidth) + (padding * 2);
             const highlightHeight = (lineHeight * 2) + (padding * 2);
 
-            // Draw highlight rectangle
-            doc.setFillColor(230, 247, 255); // A light blue highlight color
+            doc.setFillColor(230, 247, 255);
             doc.rect(startX - padding, startY - lineHeight, highlightWidth, highlightHeight, 'F');
 
-            // Set font for Investor Name (Bold)
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(12);
             doc.text(investorName, startX, startY);
 
-            // Set font for Date (Normal)
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(10);
             doc.text(reportDateString, startX, startY + lineHeight);
-
-
-            const headers = selectedColumns.map(item => item.dataset.displayName);
-            const body = fullTableData.map(row => {
-                return selectedColumns.map(item => {
-                    const headerName = item.dataset.displayName;
-                    let value = row[item.dataset.systemName] || '';
-                    if (headerName === 'Invested Value' || headerName === 'Current Value') {
-                        return formatIndianCurrency(value);
-                    }
-                    return value;
-                });
-            });
+            
+            const { headers, body } = generateDataForExport(fullTableData);
 
             let totalInvested = 0;
             let totalCurrent = 0;
@@ -566,7 +666,15 @@
             const totalRow = new Array(headers.length).fill('');
             const investedValueIndex = headers.indexOf('Invested Value');
             const currentValueIndex = headers.indexOf('Current Value');
-            if (investedValueIndex > 0) totalRow[investedValueIndex - 1] = 'Total';
+            
+            let totalLabelIndex = -1;
+            if (presetMaharajaRequestedRadio.checked) {
+                 totalLabelIndex = headers.indexOf('Folio');
+            } else if (investedValueIndex > 0) {
+                 totalLabelIndex = investedValueIndex - 1;
+            }
+
+            if(totalLabelIndex !== -1) totalRow[totalLabelIndex] = 'Total';
             if (investedValueIndex !== -1) totalRow[investedValueIndex] = formatIndianCurrency(totalInvested);
             if (currentValueIndex !== -1) totalRow[currentValueIndex] = formatIndianCurrency(totalCurrent);
             
@@ -585,27 +693,25 @@
             const wb = XLSX.utils.book_new();
             processedFilesData.forEach(fileData => {
                 const ws = generateXLSXSheet(fileData);
-                const sheetName = (fileData.headerInfoData['Investor Name'] || 'Report').substring(0, 31);
-                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                if(ws) {
+                    const sheetName = (fileData.headerInfoData['Investor Name'] || 'Report').substring(0, 31);
+                    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                }
             });
             XLSX.writeFile(wb, `${getFilename()}.xlsx`);
         }
 
         function generateXLSXSheet(fileData) {
             const { headerInfoData, fullTableData } = fileData;
-            const selectedColumns = Array.from(columnFieldsContainer.children);
-            if (selectedColumns.length === 0) return;
-
-            const parseCurrency = (val) => {
-                if (typeof val !== 'string' && typeof val !== 'number') return 0;
-                return parseFloat(String(val).replace(/,/g, '')) || 0;
-            };
+            if (fullTableData.length === 0) return null;
+            
+            const isRequestedPreset = presetMaharajaRequestedRadio.checked;
 
             let totalInvested = 0;
             let totalCurrent = 0;
             fullTableData.forEach(row => {
-                totalInvested += parseCurrency(row['Purchase Cost Value']);
-                totalCurrent += parseCurrency(row['Current Value']);
+                totalInvested += parseFloat(String(row['Purchase Cost Value']).replace(/,/g, '')) || 0;
+                totalCurrent += parseFloat(String(row['Current Value']).replace(/,/g, '')) || 0;
             });
 
             const date = new Date();
@@ -614,25 +720,21 @@
                 [`${headerInfoData['Investor Name'] || ''}`],
                 [`Mutual Fund Report as on : ${dateString}`]
             ];
-
-            const headers = selectedColumns.map(item => item.dataset.displayName);
-            const dataToExport = fullTableData.map(row => {
-                const newRow = [];
-                selectedColumns.forEach(item => {
-                    const headerName = item.dataset.displayName;
-                    let value = row[item.dataset.systemName] || '';
-                    if (headerName === 'Invested Value' || headerName === 'Current Value') {
-                        value = formatIndianCurrency(value);
-                    }
-                    newRow.push(value);
-                });
-                return newRow;
-            });
+            
+            const { headers, body: dataToExport } = generateDataForExport(fullTableData);
 
             const totalRow = new Array(headers.length).fill('');
             const investedValueIndex = headers.indexOf('Invested Value');
             const currentValueIndex = headers.indexOf('Current Value');
-            if (investedValueIndex > 0) totalRow[investedValueIndex - 1] = 'Total';
+            
+            let totalLabelIndex = -1;
+            if (isRequestedPreset) {
+                 totalLabelIndex = headers.indexOf('Folio');
+            } else if (investedValueIndex > 0) {
+                 totalLabelIndex = investedValueIndex - 1;
+            }
+
+            if(totalLabelIndex !== -1) totalRow[totalLabelIndex] = 'Total';
             if (investedValueIndex !== -1) totalRow[investedValueIndex] = formatIndianCurrency(totalInvested);
             if (currentValueIndex !== -1) totalRow[currentValueIndex] = formatIndianCurrency(totalCurrent);
 
@@ -645,11 +747,9 @@
             const boldFont = { bold: true };
             const headerStyle = { font: boldFont };
             const totalLabelStyle = { font: boldFont };
-            // Use text format for currency to preserve Indian style
             const currencyStyle = { numFmt: "@" }; 
             const totalValueStyle = { font: boldFont, numFmt: '@' };
 
-            // Style investor info rows
             for (let R = 0; R < investorDetails.length; R++) {
                 const cellRef = XLSX.utils.encode_cell({ r: R, c: 0 });
                 if (ws[cellRef]) ws[cellRef].s = headerStyle;
@@ -677,8 +777,8 @@
             }
 
             const totalRowIndex = dataStartRow + dataToExport.length + 1;
-            if (investedValueIndex > 0) {
-                const cellRef = XLSX.utils.encode_cell({ r: totalRowIndex, c: investedValueIndex - 1 });
+            if (totalLabelIndex !== -1) {
+                const cellRef = XLSX.utils.encode_cell({ r: totalRowIndex, c: totalLabelIndex });
                 if (ws[cellRef]) ws[cellRef].s = totalLabelStyle;
             }
             if (investedValueIndex !== -1) {
@@ -707,7 +807,7 @@
             downloadPdfBtn.disabled = true;
             fileError.textContent = '';
             fileStatus.textContent = '';
-            presetMaharajaRadio.checked = true; // Keep preset as default
+            presetMaharajaRadio.checked = true;
             dragDropSection.classList.add('hidden');
         }
 
@@ -720,3 +820,4 @@
     </script>
 </body>
 </html>
+
