@@ -387,24 +387,28 @@
                     // Default investment type
                     rowData['Investment type'] = 'Lumpsum';
 
-                    // Check current row for type (handles "Maharaja System report" format)
+                    // Check current row for type
                     const folioString = String(row[1]).toLowerCase();
-                    if (folioString.includes('sip')) {
+                    if (folioString.includes('sip/stp')) {
+                        rowData['Investment type'] = 'SIP/STP';
+                    } else if (folioString.includes('sip')) {
                         rowData['Investment type'] = 'SIP';
                     } else if (folioString.includes('stp')) {
                         rowData['Investment type'] = 'STP';
                     }
 
-                    // Check next row for type override (handles "Maharaja" format)
+                    // Check next row for type override
                     const nextRow = rawData[i + 1];
                     if (nextRow && nextRow.length > 1 && nextRow[1]) {
                         const nextRowNonEmpty = nextRow.filter(field => field && field.trim() !== '');
                         const nextRowTypeString = String(nextRow[1]).toLowerCase();
-                        // Check if the next row is a dedicated type row (e.g., ",(STP),,,")
-                        if (nextRowNonEmpty.length === 1 && (nextRowTypeString.includes('(sip)') || nextRowTypeString.includes('(stp)'))) {
-                            if (nextRowTypeString.includes('(sip)')) {
+                        
+                        if (nextRowNonEmpty.length === 1 && (nextRowTypeString.includes('sip') || nextRowTypeString.includes('stp'))) {
+                            if (nextRowTypeString.includes('sip/stp')) {
+                                rowData['Investment type'] = 'SIP/STP';
+                            } else if (nextRowTypeString.includes('sip')) {
                                 rowData['Investment type'] = 'SIP';
-                            } else if (nextRowTypeString.includes('(stp)')) {
+                            } else if (nextRowTypeString.includes('stp')) {
                                 rowData['Investment type'] = 'STP';
                             }
                         }
